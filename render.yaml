@@ -7,10 +7,14 @@
 # See docs/render-deployment.md for the full deployment guide.
 services:
   # Next.js frontend (apps/web). Talks to FastAPI server-side only via API_BASE_URL.
+  # autoDeploy is disabled: deploys are triggered by the gated GitHub Actions
+  # pipeline, so only checked, approved commits reach production.
   - type: web
     name: online-resume-web
     runtime: node
     plan: free
+    autoDeploy: false
+    previewsEnabled: false
     buildCommand: HUSKY=0 npm ci --include=dev --workspaces --include-workspace-root && npm run build:web
     startCommand: npm run start --workspace=apps/web
     healthCheckPath: /
@@ -30,10 +34,13 @@ services:
         sync: false
 
   # FastAPI backend (apps/api). Shares the existing Neon production database.
+  # autoDeploy is disabled: deploys are triggered by the gated GitHub Actions pipeline.
   - type: web
     name: online-resume-api
     runtime: python
     plan: free
+    autoDeploy: false
+    previewsEnabled: false
     rootDir: apps/api
     # uv sync includes the dev group, which provides uvicorn for the start command.
     buildCommand: pip install uv && uv sync --frozen

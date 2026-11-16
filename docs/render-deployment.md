@@ -4,16 +4,38 @@ This repository is an isolated copy of `Datanerdbytes/online-portfolio` created
 to host the application on [Render](https://render.com) after the original
 Vercel project exhausted its Hobby plan. The original repository, its working
 tree, and its Vercel project settings were not modified; future fixes can be
-pulled from the original repo with `git pull <original-remote> main`.
+pulled from the original repo (the `upstream` remote) with
+`git pull upstream main`. Its push URL is disabled on purpose — pushes
+belong only to `origin`, this deployment repository.
 
 ## How it deploys
 
 A [Blueprint](../render.yaml) at the repository root defines two Render web
-services. Render re-applies the Blueprint on every push to `main`
-(Blueprint sync), so a push both runs the CI checks in
-[.github/workflows/ci.yml](../.github/workflows/ci.yml) and deploys the
-updated commit. GitHub Actions no longer performs deployments on this
-repository; CI verifies changes only.
+services. Deployments are driven entirely by the GitHub Actions pipeline in
+[.github/workflows/ci.yml](../.github/workflows/ci.yml):
+
+1. Every push to `main` (and every PR) runs the three check jobs: web checks
+   (lint, typecheck, unit tests, production build), API checks (ruff, mypy,
+   pytest including the PostgreSQL-backed integration and migration tests),
+   and repository file checks (formatting, secret scan).
+2. On `main`, the gated `Deploy production` job then runs behind the
+   `production` GitHub environment (protected to `main`, requires reviewer
+   approval — the same "Approve and deploy" flow as the original repository).
+3. The deploy job calls the Render API to deploy the **exact pushed commit**
+   to the API service first, then the web service, and polls each deploy
+   until it reports `live` (any `*_failed`, `deactivated`, or `canceled`
+   status fails the job).
+4. A final smoke check verifies the live endpoints
+   (`/api/v1/health`, `/api/v1/ready`, the web `/api/health` proxy, and the
+   web landing page) before the run is reported successful.
+
+The Blueprint sets `autoDeploy: false` on both services, so pushes never
+trigger Render-side deploys on their own — GitHub Actions is the only deploy
+path. `previewsEnabled: false` keeps PR preview instances off the free-tier
+instance-hour pool. The Blueprint itself still syncs on push, so config
+changes in `render.yaml` (env values, plan, commands) apply without a code
+deploy. The pipeline authenticates with the `RENDER_API_KEY` repository
+secret; service IDs are committed in the workflow.
 
 | Service             | Runtime     | Root dir   | Build                                | Start                                                        | Health check     |
 | ------------------- | ----------- | ---------- | ------------------------------------ | ------------------------------------------------------------ | ---------------- |
@@ -102,8 +124,11 @@ dashboard — no code or Blueprint changes are required.
 - `render.yaml` added; `docs/deployment.md` remains as the historical record
   of the Vercel pipeline this copy was cloned from.
 - `.github/workflows/ci.yml` keeps all three check jobs (web, API, repository
-  files) and drops the Vercel `deploy` job and its `production` environment
-  gate; deployments are Render's Blueprint sync on push.
+  files) and has a Render-native `Deploy production` job behind the same
+  `production` environment gate: it deploys the pushed commit via the Render
+  API, polls deploy status, and smoke-checks the live services.
+- Branch protection on `main` requires PRs, the three required check jobs,
+  and resolved conversations; the repository allows squash merges only.
 - `scripts/migrate-production.py` and `scripts/deployment-smoke.mjs` are
   Vercel/Neon-specific tools kept for reference; they are not part of the
   Render flow.

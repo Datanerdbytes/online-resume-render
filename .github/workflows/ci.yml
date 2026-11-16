@@ -10,8 +10,9 @@ on:
 permissions:
   contents: read
 
-# Production deployments on this repository happen through Render's Blueprint
-# sync on push (render.yaml), not through GitHub Actions. CI verifies changes only.
+# Production deploys go through the gated deploy job below. Render's own
+# push-to-deploy (autoDeploy) is disabled so GitHub Actions is the only deploy path.
+# Do not interrupt a production rollout between backend and frontend deploys.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -107,3 +108,89 @@ jobs:
         env:
           GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
       - run: node scripts/check-staged-files.mjs --all
+
+  deploy:
+    name: Deploy production
+    needs: [web, api, repository-files]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://online-resume-web.onrender.com
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      API_SERVICE_ID: srv-dbtj222fngtc73cprtm0
+      WEB_SERVICE_ID: srv-dbtj222fngtc73cprto0
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require deployment credential
+        run: test -n "$RENDER_API_KEY" || { echo 'Set the RENDER_API_KEY repository secret.'; exit 1; }
+      - name: Trigger backend deploy for the pushed commit
+        run: |
+          response="$(curl -sS -f -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"commitId\":\"$GITHUB_SHA\",\"clearCache\":\"do_not_clear\"}" \
+            "https://api.render.com/v1/services/$API_SERVICE_ID/deploys")"
+          echo "$response" | jq -r '.id' > "$RUNNER_TEMP/api-deploy-id"
+        # Backend first, then frontend — the web app tolerates a stale API
+        # (checked-in resume fallback), but the reverse pairing breaks /api/health.
+      - name: Wait for backend deploy to go live
+        run: |
+          deploy_id="$(cat "$RUNNER_TEMP/api-deploy-id")"
+          for attempt in $(seq 1 60); do
+            status="$(curl -sS -f -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$API_SERVICE_ID/deploys/$deploy_id" | jq -r '.status')"
+            echo "attempt $attempt: $status"
+            case "$status" in
+              live) exit 0 ;;
+              build_failed|update_failed|pre_deploy_failed|deactivated|canceled)
+                echo "::error::Backend deploy ended in '$status'"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Timed out waiting for the backend deploy"; exit 1
+      - name: Trigger frontend deploy for the pushed commit
+        run: |
+          response="$(curl -sS -f -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"commitId\":\"$GITHUB_SHA\",\"clearCache\":\"do_not_clear\"}" \
+            "https://api.render.com/v1/services/$WEB_SERVICE_ID/deploys")"
+          echo "$response" | jq -r '.id' > "$RUNNER_TEMP/web-deploy-id"
+      - name: Wait for frontend deploy to go live
+        run: |
+          deploy_id="$(cat "$RUNNER_TEMP/web-deploy-id")"
+          for attempt in $(seq 1 60); do
+            status="$(curl -sS -f -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$WEB_SERVICE_ID/deploys/$deploy_id" | jq -r '.status')"
+            echo "attempt $attempt: $status"
+            case "$status" in
+              live) exit 0 ;;
+              build_failed|update_failed|pre_deploy_failed|deactivated|canceled)
+                echo "::error::Frontend deploy ended in '$status'"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Timed out waiting for the frontend deploy"; exit 1
+      - name: Smoke-check the live services
+        run: |
+          curl -fsS https://online-resume-api.onrender.com/api/v1/health | grep -q '"status":"ok"'
+          curl -fsS https://online-resume-api.onrender.com/api/v1/ready | grep -q '"status":"ok"'
+          curl -fsS https://online-resume-web.onrender.com/api/health | grep -q '"status":"ok"'
+          test "$(curl -fsS -o /dev/null -w '%{http_code}' https://online-resume-web.onrender.com/)" = "200"
+      - name: Report release
+        if: success()
+        run: |
+          {
+            echo '### Production deployment'
+            echo "Commit: $GITHUB_SHA"
+            echo 'Backend: https://online-resume-api.onrender.com (deploy live, health OK)'
+            echo 'Frontend: https://online-resume-web.onrender.com (deploy live, smoke OK)'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Report incomplete release
+        if: failure()
+        run: echo 'Deployment failed. Inspect both services in the Render dashboard before retrying; see docs/render-deployment.md.' >> "$GITHUB_STEP_SUMMARY"
