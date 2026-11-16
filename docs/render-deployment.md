@@ -128,8 +128,10 @@ dashboard — no code or Blueprint changes are required.
   files) and has a Render-native `Deploy production` job behind the same
   `production` environment gate: it deploys the pushed commit via the Render
   API, polls deploy status, and smoke-checks the live services.
-- Branch protection on `main` requires PRs, the three required check jobs,
-  and resolved conversations; the repository allows squash merges only.
+- Branch protection on `main` requires PRs and the three required check jobs;
+  the repository allows squash merges only. CodeRabbit reviews PRs
+  informationally (`request_changes_workflow: false`) and is not a required
+  check or a merge blocker; conversation resolution is not required.
 - `scripts/migrate-production.py` and `scripts/deployment-smoke.mjs` are
   Vercel/Neon-specific tools kept for reference; they are not part of the
   Render flow.
