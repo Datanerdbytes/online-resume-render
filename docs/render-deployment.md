@@ -64,15 +64,13 @@ Notes:
    | `NVIDIA_MODEL`             | api     | Vercel dashboard (API project) or `apps/api/.env`                                                                            |
    | `RESUME_IMPORT_ENABLED`    | api     | Vercel dashboard (API project) or `apps/api/.env`                                                                            |
 
-   The three cross-service URLs are not known before the services exist; they
-   can be entered as placeholders during creation and corrected with the
-   literal `*.onrender.com` URLs afterwards (a follow-up commit can also pin
-   them in `render.yaml`, which then syncs on push).
+   The three cross-service URLs are pinned as literal values in `render.yaml`
+   (`https://online-resume-web.onrender.com`,
+   `https://online-resume-api.onrender.com`); only the secrets remain
+   dashboard-managed.
 
-4. After creation, update `ADMIN_WEB_ORIGIN` and `WEB_APP_URL` with the
-   services' actual URLs (visible on each service page).
-5. In the **Neon Console**, enable Managed Auth on the branch and add the new
-   `https://<web-service-url>.onrender.com` origin to its **trusted origins**.
+4. In the **Neon Console**, enable Managed Auth on the branch and add
+   `https://online-resume-web.onrender.com` to its **trusted origins**.
    Without it, sign-in/registration from the Render domain fails; public
    portfolio pages work regardless. The API verifies JWTs against
    `NEON_AUTH_BASE_URL` only, so no API-side change is needed.
@@ -80,9 +78,9 @@ Notes:
 ## Verifying the deployment
 
 ```bash
-curl -s https://<api-service-url>.onrender.com/api/v1/health   # {"status":"ok"}
-curl -s https://<api-service-url>.onrender.com/api/v1/ready    # 200 = database reachable
-curl -sI https://<web-service-url>.onrender.com/               # 200, page renders
+curl -s https://online-resume-api.onrender.com/api/v1/health   # {"status":"ok"}
+curl -s https://online-resume-api.onrender.com/api/v1/ready    # 200 = database reachable
+curl -sI https://online-resume-web.onrender.com/               # 200, page renders
 ```
 
 Then check in a browser: landing page, `/resume`, and `/projects` render with

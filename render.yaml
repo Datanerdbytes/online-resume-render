@@ -1,9 +1,8 @@
 # Render Blueprint for the isolated copy of online-portfolio.
 #
 # Deployed automatically on every push to main via Render's Blueprint sync.
-# Secrets and environment-specific values are marked `sync: false`; they are
-# entered once in the Render Dashboard during Blueprint creation and are never
-# stored in this repository.
+# Secrets are marked `sync: false`; they are entered once in the Render
+# Dashboard during Blueprint creation and are never stored in this repository.
 #
 # See docs/render-deployment.md for the full deployment guide.
 services:
@@ -19,12 +18,12 @@ services:
       - key: NODE_VERSION
         value: "24"
       # Exact HTTPS origin of THIS web service (no trailing slash). Required for
-      # admin auth cookies and CSRF origin checks. Filled after first creation.
+      # admin auth cookies and CSRF origin checks.
       - key: ADMIN_WEB_ORIGIN
-        sync: false
-      # Public URL of the API service below, e.g. https://online-resume-api.onrender.com
+        value: https://online-resume-web.onrender.com
+      # Public URL of the API service below.
       - key: API_BASE_URL
-        sync: false
+        value: https://online-resume-api.onrender.com
       - key: NEON_AUTH_BASE_URL
         sync: false
       - key: NEON_AUTH_COOKIE_SECRET
@@ -52,7 +51,7 @@ services:
         sync: false
       # Exact HTTPS origin of the web service above. Informational (API root).
       - key: WEB_APP_URL
-        sync: false
+        value: https://online-resume-web.onrender.com
       - key: NEON_AUTH_BASE_URL
         sync: false
       - key: PUBLIC_PORTFOLIO_USER_ID
