@@ -14,7 +14,6 @@ services:
     runtime: node
     plan: free
     autoDeploy: false
-    previewsEnabled: false
     buildCommand: HUSKY=0 npm ci --include=dev --workspaces --include-workspace-root && npm run build:web
     startCommand: npm run start --workspace=apps/web
     healthCheckPath: /
@@ -40,7 +39,6 @@ services:
     runtime: python
     plan: free
     autoDeploy: false
-    previewsEnabled: false
     rootDir: apps/api
     # uv sync includes the dev group, which provides uvicorn for the start command.
     buildCommand: pip install uv && uv sync --frozen
