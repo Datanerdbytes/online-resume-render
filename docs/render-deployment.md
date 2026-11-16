@@ -31,7 +31,8 @@ services. Deployments are driven entirely by the GitHub Actions pipeline in
 
 The Blueprint sets `autoDeploy: false` on both services, so pushes never
 trigger Render-side deploys on their own — GitHub Actions is the only deploy
-path. `previewsEnabled: false` keeps PR preview instances off the free-tier
+path. PR previews are disabled per service in the Render dashboard
+(Settings → PR Previews), keeping preview instances off the free-tier
 instance-hour pool. The Blueprint itself still syncs on push, so config
 changes in `render.yaml` (env values, plan, commands) apply without a code
 deploy. The pipeline authenticates with the `RENDER_API_KEY` repository
