@@ -229,7 +229,19 @@ docker compose down      # Stop it; preserve the named data volume
 
 `docker compose down -v` also deletes the local PostgreSQL volume and its data. Use it only when you intend to discard that development database.
 
+## Render deployment
+
+This copy of the repository deploys to Render instead of Vercel; the original
+`Datanerdbytes/online-portfolio` repository and its Vercel projects are
+untouched. The [Render deployment guide](docs/render-deployment.md) covers the
+Blueprint services, the one-time dashboard configuration and environment
+variables, the Neon Auth trusted-origins change, deployment verification, and
+the free-plan limits.
+
 ## Vercel frontend deployment
+
+Historical reference for the original hosting this copy was cloned from; this
+copy deploys to Render (see above).
 
 Routine production releases use the [GitHub Actions deployment workflow](docs/deployment.md).
 It requires all frontend, backend, PostgreSQL integration, and repository checks
@@ -295,6 +307,7 @@ database query and returns 503 without database exception details on failure.
 
 - [Backend API and database guide](./apps/api/README.md)
 - [Frontend guide and browser verification](./apps/web/README.md)
+- [Render deployment guide](./docs/render-deployment.md)
 - [Project design plan](./docs/plans/design-plan.md)
 
 ## Portfolio workspace and publication
