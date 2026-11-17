@@ -19,8 +19,12 @@ name: API keep-alive
 #   Any push/commit keeps it enabled; re-enable manually otherwise.
 on:
   schedule:
-    # Every 10 minutes, offset from the hour to avoid scheduler queueing.
-    - cron: "2-59/10 * * * *"
+    # Every 10 minutes. A plain step expression is used because GitHub's
+    # scheduler silently created no runs for a range-with-step cron
+    # ("2-59/10 * * * *"); scheduled workflows are best-effort and can be
+    # delayed a few minutes, especially near the top of the hour. A missed
+    # window just means the next ping cold-starts the service.
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
