@@ -1,0 +1,50 @@
+name: API keep-alive
+
+# The api service runs on Render's free plan, which spins down after ~15
+# minutes of inactivity and can take 20-60 seconds to cold start. The web
+# app's server-side section fetches use an 8-second timeout
+# (apps/web/src/lib/resume-server.ts SECTION_TIMEOUT_MS), so a visitor who
+# arrives while the API is asleep sees the "temporarily unavailable" fallback.
+#
+# This workflow pings the public health endpoint on a schedule so the service
+# stays warm. Render grants 750 free instance-hours per month; an always-on
+# single service needs ~720, so the free tier covers it for a seldom-visited
+# site (the web service itself spins down when idle and wakes in seconds).
+#
+# Notes:
+# - Scheduled workflows are best-effort and can be delayed a few minutes,
+#   especially near the top of the hour; the off-minute offset reduces that.
+#   A missed window just means the next ping cold-starts the service.
+# - GitHub disables schedules after 60 days of no repository activity.
+#   Any push/commit keeps it enabled; re-enable manually otherwise.
+on:
+  schedule:
+    # Every 10 minutes, offset from the hour to avoid scheduler queueing.
+    - cron: "2-59/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping API health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Warm the API service
+        run: |
+          # Cold starts respond slowly or 503 while the instance wakes, so
+          # retry until the health endpoint reports ok (or attempts run out).
+          url="https://online-resume-api.onrender.com/api/v1/health"
+          for attempt in 1 2 3; do
+            code="$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 120 "$url" || true)"
+            if [ "$code" = "200" ] && grep -q '"status":"ok"' /tmp/health.json; then
+              echo "API healthy (attempt ${attempt}, HTTP ${code})."
+              exit 0
+            fi
+            echo "Attempt ${attempt}: HTTP ${code:-connection failed}; retrying in 30s."
+            sleep 30
+          done
+          echo "::warning::API did not report healthy; it will cold-start on the next ping."
+          exit 1

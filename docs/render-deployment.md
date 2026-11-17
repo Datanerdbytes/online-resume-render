@@ -120,6 +120,22 @@ the month, which suspends all free web services until it resets. If that
 happens, upgrade one or both services to a paid compute plan in the Render
 dashboard — no code or Blueprint changes are required.
 
+## Free plan keep-alive
+
+Because the web app's server-side fetches time out after 8 seconds while a
+cold start takes 20-60 seconds, a visitor who arrives right after the API
+service spins down sees the "temporarily unavailable" fallback. The
+scheduled `API keep-alive` workflow (`.github/workflows/api-keep-alive.yml`)
+pings `https://online-resume-api.onrender.com/api/v1/health` every 10
+minutes so the API instance stays warm. An always-on single service uses
+about 720 of the 750 free instance-hours; the web service stays spun down
+when idle (waking in seconds on a visit), so the pool is not exhausted.
+
+Two caveats: scheduled workflows are delayed occasionally under load, so a
+rare first visit may still catch a cold start, and GitHub disables
+schedules after 60 days without repository activity — any push re-enables
+it, or re-enable the workflow in the Actions tab.
+
 ## Differences from the original repository
 
 - `render.yaml` added; `docs/deployment.md` remains as the historical record
