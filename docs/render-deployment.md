@@ -124,17 +124,31 @@ dashboard — no code or Blueprint changes are required.
 
 Because the web app's server-side fetches time out after 8 seconds while a
 cold start takes 20-60 seconds, a visitor who arrives right after the API
-service spins down sees the "temporarily unavailable" fallback. The
-scheduled `API keep-alive` workflow (`.github/workflows/api-keep-alive.yml`)
-pings `https://online-resume-api.onrender.com/api/v1/health` every 10
-minutes so the API instance stays warm. An always-on single service uses
-about 720 of the 750 free instance-hours; the web service stays spun down
-when idle (waking in seconds on a visit), so the pool is not exhausted.
+service spins down sees the "temporarily unavailable" fallback.
 
-Two caveats: scheduled workflows are delayed occasionally under load, so a
-rare first visit may still catch a cold start, and GitHub disables
-schedules after 60 days without repository activity — any push re-enables
-it, or re-enable the workflow in the Actions tab.
+The active keep-alive is an external pinger: a free cron-job.org account
+runs a job titled "keep-alive api" that requests
+`https://online-resume-api.onrender.com/api/v1/health` every 10 minutes
+(minutes 0, 10, 20, 30, 40, 50 UTC). Notes on that service:
+
+- It times a request out after 30 seconds, so a single ping during a
+  20-60 s cold start can be recorded as failed; that is expected and
+  harmless because the wake-up still proceeds.
+- cron-job.org auto-disables a job after 25 consecutive failures. The
+  account has the failure email notification enabled as the safety net;
+  if that email arrives, check the Render dashboard.
+
+An always-on single service uses about 720 of the 750 free instance-hours;
+the web service stays spun down when idle (waking in seconds on a visit),
+so the pool is not exhausted.
+
+`API keep-alive` (`.github/workflows/api-keep-alive.yml`) is retained as a
+dormant backup pinger with the same 10-minute schedule. GitHub's scheduler
+never created runs for it (verified across several schedule slots with the
+workflow `active`, matching an open GitHub platform report), so it should
+not be relied upon — but its manual "Run workflow" dispatch works and is
+useful for testing. If cron-job.org ever goes away, re-enable or replace
+its job there; the pinned URL above is the only value needed.
 
 ## Differences from the original repository
 
