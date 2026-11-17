@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import {
   API_BASE_URL,
+  fetchWakingApi,
   type ApiContact,
   type ApiEducation,
   type ApiExperience,
@@ -52,10 +53,11 @@ async function fetchSection<T>(
   const owner = userId ? `users/${encodeURIComponent(userId)}/` : "";
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/api/v1/public/${owner}${section}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(SECTION_TIMEOUT_MS),
-    });
+    response = await fetchWakingApi(
+      `${API_BASE_URL}/api/v1/public/${owner}${section}`,
+      { cache: "no-store" },
+      SECTION_TIMEOUT_MS
+    );
   } catch {
     return { status: "unavailable" };
   }

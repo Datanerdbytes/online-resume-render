@@ -2,9 +2,12 @@ name: API keep-alive
 
 # The api service runs on Render's free plan, which spins down after ~15
 # minutes of inactivity and can take 20-60 seconds to cold start. The web
-# app's server-side section fetches use an 8-second timeout
-# (apps/web/src/lib/resume-server.ts SECTION_TIMEOUT_MS), so a visitor who
-# arrives while the API is asleep sees the "temporarily unavailable" fallback.
+# app's server-side section fetches use an 8-second first-attempt timeout
+# (apps/web/src/lib/resume-server.ts SECTION_TIMEOUT_MS) and then retry once
+# with a cold-start-length timeout (fetchWakingApi in apps/web/src/lib/api.ts),
+# so a visitor waits through a cold start instead of seeing the
+# "temporarily unavailable" fallback. The fallback still appears when the API
+# is hard-down for longer than that wake attempt.
 #
 # This workflow was meant to ping the public health endpoint on a schedule so
 # the service stays warm. Render grants 750 free instance-hours per month; an

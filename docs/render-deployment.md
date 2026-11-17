@@ -122,9 +122,13 @@ dashboard — no code or Blueprint changes are required.
 
 ## Free plan keep-alive
 
-Because the web app's server-side fetches time out after 8 seconds while a
-cold start takes 20-60 seconds, a visitor who arrives right after the API
-service spins down sees the "temporarily unavailable" fallback.
+The API service cold-starts in 20-60 seconds, while the web app's first
+server-side fetch attempt times out after 8 seconds. To keep a cold start
+from breaking a visit, the web app's server-side API reads
+(`fetchWakingApi` in `apps/web/src/lib/api.ts`) retry once after a short
+pause with a 60-second timeout, so the page waits through the cold start
+instead of rendering the "temporarily unavailable" fallback. The fallback
+still appears if the API stays unreachable past that single wake attempt.
 
 The active keep-alive is an external pinger: a free cron-job.org account
 runs a job titled "keep-alive api" that requests
