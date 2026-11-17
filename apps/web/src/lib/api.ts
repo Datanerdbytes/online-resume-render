@@ -72,6 +72,49 @@ export type ApiResume = {
   contact: ApiContact | null;
 };
 
+// Render's free tier spins the API service down after ~15 idle minutes and a
+// cold start takes 20-60 s, while reads that block a page render need to stay
+// fast when the API is healthy. fetchWakingApi models that asymmetry: the
+// first attempt uses the caller's short timeout, and if the API looks asleep
+// (network failure or a gateway 5xx), it pauses briefly and retries once with
+// a cold-start-length timeout so the caller waits through the wake-up instead
+// of showing the "temporarily unavailable" fallback. 404s and other client
+// errors are definitive answers and are returned without a retry.
+export const COLD_START_RETRY_DELAY_MS = 3000;
+export const COLD_START_WAKE_TIMEOUT_MS = 60000;
+
+function wakeRetryInit(init: RequestInit): RequestInit {
+  return {
+    ...init,
+    signal: AbortSignal.timeout(COLD_START_WAKE_TIMEOUT_MS),
+  };
+}
+
+async function wakeRetry(url: string, init: RequestInit): Promise<Response> {
+  await new Promise((resolve) =>
+    setTimeout(resolve, COLD_START_RETRY_DELAY_MS)
+  );
+  return fetch(url, wakeRetryInit(init));
+}
+
+export async function fetchWakingApi(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    return wakeRetry(url, init);
+  }
+  if (response.status >= 500) return wakeRetry(url, init);
+  return response;
+}
+
 const RESUME_TIMEOUT_MS = 5000;
 
 export async function fetchResume(token?: string): Promise<ApiResume | null> {
@@ -198,34 +241,26 @@ export async function fetchProjectsSafe(): Promise<Project[]> {
 }
 
 export async function fetchProjects(token?: string): Promise<ProjectsResponse> {
-  let controller: AbortController | null = null;
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  try {
-    controller = new AbortController();
-    timeout = setTimeout(() => controller?.abort(), PROJECTS_TIMEOUT_MS);
-    const response = await fetch(
-      `${API_BASE_URL}/api/v1/${token ? "" : "public/"}projects`,
-      {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-store",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        signal: controller.signal,
-      }
+  // No per-attempt timer to clear: fetchWakingApi owns its AbortSignals.
+  const response = await fetchWakingApi(
+    `${API_BASE_URL}/api/v1/${token ? "" : "public/"}projects`,
+    {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-store",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    },
+    PROJECTS_TIMEOUT_MS
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Upstream projects request failed with HTTP ${response.status}`
     );
-    if (!response.ok) {
-      throw new Error(
-        `Upstream projects request failed with HTTP ${response.status}`
-      );
-    }
-    const data = await response.json();
-    if (!isProjectsResponse(data)) {
-      throw new Error("Invalid projects response payload");
-    }
-    return data;
-  } finally {
-    if (timeout !== null) clearTimeout(timeout);
-    controller = null;
   }
+  const data = await response.json();
+  if (!isProjectsResponse(data)) {
+    throw new Error("Invalid projects response payload");
+  }
+  return data;
 }

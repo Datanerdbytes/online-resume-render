@@ -21,6 +21,46 @@ const PROFILE = {
 
 const CONTACT = { id: 1, phone: null, email: "ada@example.com", links: [] };
 
+function loadApiModule(fetch) {
+  // Loads the real src/lib/api.ts (including fetchWakingApi) so resume-server
+  // is tested against its actual dependency, not a hand-written stub.
+  const source = readFileSync(
+    new URL("../src/lib/api.ts", import.meta.url),
+    "utf8"
+  );
+  const code = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+    },
+  }).outputText;
+  const compiledModule = { exports: {} };
+  vm.runInNewContext(
+    code,
+    {
+      module: compiledModule,
+      exports: compiledModule.exports,
+      process: { env: {} },
+      fetch,
+      // Immediate execution keeps retry tests fast while still exercising
+      // the delay between the two attempts.
+      setTimeout: (callback) => {
+        callback();
+      },
+      clearTimeout,
+      AbortController,
+      AbortSignal,
+      Response,
+      Headers,
+      Promise,
+      JSON,
+      URL,
+    },
+    { filename: "api" }
+  );
+  return compiledModule.exports;
+}
+
 function loadResumeServer(fetch) {
   const source = readFileSync(
     new URL("../src/lib/resume-server.ts", import.meta.url),
@@ -41,7 +81,8 @@ function loadResumeServer(fetch) {
       require: (id) => {
         if (id === "server-only") return {};
         if (id === "react") return { cache: (fn) => fn };
-        if (id === "@/lib/api") return { API_BASE_URL: "http://api.test" };
+        if (id === "@/lib/api")
+          return { ...loadApiModule(fetch), API_BASE_URL: "http://api.test" };
         throw new Error(`Unexpected import: ${id}`);
       },
       fetch,
@@ -104,6 +145,41 @@ test("network failures are unavailable", async () => {
   });
 
   assert.equal((await getContactState(null)).status, "unavailable");
+});
+
+test("a network failure is retried once through a cold start", async () => {
+  const inits = [];
+  const { getAboutState } = loadResumeServer(async (url, init) => {
+    inits.push(init);
+    if (inits.length === 1) throw new Error("gateway timeout");
+    return Response.json(PROFILE);
+  });
+
+  assert.equal((await getAboutState(null)).status, "ok");
+  assert.equal(inits.length, 2);
+  assert.ok(inits[0].signal instanceof AbortSignal);
+  assert.ok(inits[1].signal instanceof AbortSignal);
+});
+
+test("a 5xx is retried once through a cold start", async () => {
+  const inits = [];
+  const { getAboutState } = loadResumeServer(async (url, init) => {
+    inits.push(init);
+    return Response.json({ detail: "waking up" }, { status: 503 });
+  });
+
+  assert.equal((await getAboutState(null)).status, "unavailable");
+  assert.equal(inits.length, 2);
+});
+
+test("404 and malformed payloads are not retried", async () => {
+  const missing = loadResumeServer(async () =>
+    Response.json({ detail: "Portfolio not published" }, { status: 404 })
+  );
+  assert.equal((await missing.getAboutState(null)).status, "missing");
+
+  const malformed = loadResumeServer(async () => ({ id: 1 }));
+  assert.equal((await malformed.getAboutState(null)).status, "unavailable");
 });
 
 test("loadPublicResumeSections assembles the five section payloads", async () => {
